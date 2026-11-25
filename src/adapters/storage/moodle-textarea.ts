@@ -261,6 +261,10 @@ export class MoodleTextareaAdapter implements IStorageAdapter {
     return this.storageKey;
   }
 
+  public getFieldName(): string {
+    return this.textarea.name;
+  }
+
   /**
    * Dispatches input and change events so Moodle's native form trackers pick up modifications, then starts
    * the quiz autosave timer, which those events do not reach.

@@ -15,6 +15,8 @@ export class IframeMessengerAdapter implements IMessengerAdapter {
   private handlers: Set<MessageHandler> = new Set();
   private isLockedDown: boolean = false;
   private messageListener: ((event: MessageEvent) => void) | null = null;
+  private nextRequest = 1;
+  private pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();
 
   constructor(iframe: HTMLIFrameElement, targetOrigin: string = '*') {
     if (!iframe || iframe.tagName?.toLowerCase() !== 'iframe') {
@@ -55,6 +57,13 @@ export class IframeMessengerAdapter implements IMessengerAdapter {
       }
 
       const { type, payload, msgId } = data;
+      if (type === WidgetMessageTypes.CONTROL_RESULT && payload && this.pending.has(payload.id)) {
+        const waiting = this.pending.get(payload.id)!;
+        this.pending.delete(payload.id);
+        clearTimeout(waiting.timer);
+        if (payload.ok) waiting.resolve(payload.value); else waiting.reject(new Error(String(payload.error ?? 'The widget could not do that.')));
+        return;
+      }
       if (typeof type === 'string') {
         this.handlers.forEach((handler) => {
           try {
@@ -120,6 +129,19 @@ export class IframeMessengerAdapter implements IMessengerAdapter {
         serverHash,
         success: true,
       },
+    });
+  }
+
+  /**
+   * Asks the widget to do something (the control protocol) and waits for its answer; rejects with the widget's sentence, or after `timeoutMs`.
+   */
+  public request(op: string, args: Record<string, unknown> = {}, timeoutMs = 300_000): Promise<unknown> {
+    if (this.isLockedDown) return Promise.reject(new Error('The widget is locked.'));
+    const id = this.nextRequest++;
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`The widget did not answer ${op} in time.`)); }, timeoutMs);
+      this.pending.set(id, { resolve, reject, timer });
+      this.post({ type: WidgetMessageTypes.CONTROL, payload: { id, op, args } });
     });
   }
 

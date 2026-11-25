@@ -60,6 +60,9 @@ export interface IStorageAdapter {
    */
   getIdentifier(): string;
 
+  /** The name of the answer's field in the LMS's form (Moodle: `q12:3_answer`), from which the grading fields of the same answer are found. */
+  getFieldName?(): string;
+
   /**
    * Optional methods to control visibility of host textarea for debugging.
    */
@@ -112,6 +115,12 @@ export interface IMessengerAdapter {
   onMessage(handler: MessageHandler): void;
 
   /**
+   * Asks the widget to do something and waits for its answer (the control protocol: `{ type: 'PYPAD_CONTROL', payload: { id, op, args } }`, answered by
+   * `{ type: 'PYPAD_CONTROL_RESULT', payload: { id, ok, value | error } }`). Optional: a widget that does not answer it is not driven.
+   */
+  request?(op: string, args?: Record<string, unknown>, timeoutMs?: number): Promise<unknown>;
+
+  /**
    * Severs the connection permanently (used during fatal errors).
    */
   lockdown(message?: string): void;
@@ -134,6 +143,8 @@ export const WidgetMessageTypes = {
   SYNC_ACK: 'SYNC_ACK',
   ERROR_LOCKDOWN: 'ERROR_LOCKDOWN',
   WIDGET_READY: 'WIDGET_READY',
+  CONTROL: 'PYPAD_CONTROL',
+  CONTROL_RESULT: 'PYPAD_CONTROL_RESULT',
 } as const;
 
 export type WidgetMessageType = (typeof WidgetMessageTypes)[keyof typeof WidgetMessageTypes];

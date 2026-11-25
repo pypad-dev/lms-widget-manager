@@ -3,6 +3,7 @@ import { DEFAULT_ANSWER_FORMAT, isAnswerFormat } from './adapters/storage/answer
 import { MoodleTextareaAdapter } from './adapters/storage/moodle-textarea';
 import { IframeMessengerAdapter } from './adapters/messenger/iframe';
 import { DOMEventMessengerAdapter } from './adapters/messenger/web-component';
+import { ensureGradingToolbar } from './core/grading-toolbar';
 import { WidgetController } from './core/widget-controller';
 import { SETUP_PROBLEMS, showSetupProblem } from './core/setup-problem';
 import { MoodleContextAdapter, htmlAnswerBoxProblem } from './adapters/context/moodle';
@@ -14,6 +15,9 @@ export { IframeMessengerAdapter } from './adapters/messenger/iframe';
 export { DOMEventMessengerAdapter, WebComponentMessengerAdapter } from './adapters/messenger/web-component';
 export { MoodleContextAdapter, htmlAnswerBoxProblem } from './adapters/context/moodle';
 export { WidgetController } from './core/widget-controller';
+export { fieldPrefix, gradingFields, suggestedMark, commentHtml, writeComment, type CheckResult, type ChecksAnswer, type GradingFields } from './core/grading';
+export { testAnswer, testAllAnswers, summary, type Outcome } from './core/grading-runner';
+export { ensureGradingToolbar } from './core/grading-toolbar';
 export { SETUP_PROBLEMS, showSetupProblem, type SetupProblem } from './core/setup-problem';
 
 /**
@@ -120,6 +124,8 @@ export class WidgetBootstrapper {
           };
 
           activeControllers.push(controllerInstance);
+          // A marker's page: a button to run every answer's tests and fill in the suggested marks and comments (src/core/grading-toolbar.ts)
+          if (controllerInstance.getConfig().runMode === 'grade') ensureGradingToolbar(document, () => activeControllers);
 
           // An answer box in HTML format loses notebooks: say so and lock, rather than seem to save (a marker or a review has nothing to save)
           const htmlProblem = htmlAnswerBoxProblem(targetTextarea);
@@ -290,8 +296,7 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
               console.log(`[LMS Widget Manager] Matching pending iframe found (Trigger: ${data.type}). Initializing container...`);
               const controller = WidgetBootstrapper.initializeContainer(container);
               if (controller) {
-                activeControllers.push(controller);
-                justInitialized = true;
+                justInitialized = true;                // (initializeContainer has put it in activeControllers: once is enough, or a grading run tests each answer twice)
               }
             }
             break;

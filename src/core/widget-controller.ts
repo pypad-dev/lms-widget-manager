@@ -96,6 +96,17 @@ export class WidgetController {
     return this.config;
   }
 
+  /** Asks the widget to do something (run, run its checks, ...: the control protocol). Rejects when its messenger cannot ask. */
+  public control(op: string, args?: Record<string, unknown>): Promise<unknown> {
+    if (!this.messenger.request) return Promise.reject(new Error('This widget cannot be driven.'));
+    return this.messenger.request(op, args);
+  }
+
+  /** The name of the answer's field in the LMS's form, when the storage knows it. */
+  public getFieldName(): string | null {
+    return this.storage.getFieldName?.() ?? null;
+  }
+
   public getMountPoint(): HTMLElement {
     return this.mountPoint;
   }

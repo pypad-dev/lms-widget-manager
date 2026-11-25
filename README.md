@@ -137,6 +137,12 @@ The Host will sniff the LMS environment and pass a `runMode` string inside the `
 | `grade` | Manual marking mode. Lock student input, but reveal hidden test outputs and enable grading scratchpads. |
 | `review` | Post-assessment. Globally lock the widget (`isReadOnly: true`). Display teacher feedback. |
 
+### D. Running the question's checks on a grading page
+On a marker's grading page (`runMode: 'grade'`: Moodle's *Manual grading* report, or one answer's comment page) the Host shows a **Run tests on all answers** button above the first answer. Pressed, it asks each answer's widget, two at a time, for its checks, and fills in that answer's **mark** (passed ÷ total × the question's maximum, to two places) and **comment** (which checks passed, and why the others did not), in the fields Moodle names from the answer's own (`q12:3_answer` → `q12:3_-mark`, `q12:3_-maxmark`, `q12:3_-comment`). Nothing is saved: the marker reads, changes and saves as always.
+*   **Host Emits:** `PYPAD_CONTROL` with payload `{ id, op: 'checks', args: {} }`
+*   **Widget Emits:** `PYPAD_CONTROL_RESULT` with payload `{ id, ok: true, value: { checks: [{ id, name, passed, message }], passed, total } }`, or `{ id, ok: false, error }` (a sentence)
+*   A widget that does not answer is shown as *could not be run* after five minutes; one with no checks (`total: 0`) is left alone. (`src/core/grading.ts`, `grading-runner.ts`, `grading-toolbar.ts`; tests in `tests/grading.test.ts`. PyPad's side: its `docs/CONTROL.md` and `docs/GRADING.md`.)
+
 ## 4. Example: A Native DOM "SDK" Wrapper
 
 If you want to turn a simple <textarea> embedded directly in the question into a compliant widget (bypassing the need for an external iframe), you use CustomEvents instead of postMessage:
