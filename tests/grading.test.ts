@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { commentHtml, fieldPrefix, gradingFields, pointsOf, score, suggestedMark, writeComment } from '../src/core/grading.ts';
+import { authorNotebookIn, commentHtml, fieldPrefix, gradingFields, hasText, pointsOf, score, suggestedMark, writeComment } from '../src/core/grading.ts';
 import { summary, testAllAnswers, testAnswer } from '../src/core/grading-runner.ts';
 import { ensureGradingToolbar } from '../src/core/grading-toolbar.ts';
 import type { WidgetController } from '../src/core/widget-controller.ts';
@@ -132,5 +132,46 @@ describe('testing the answers', () => {
     document.body.innerHTML = answerHtml(1, 1);
     expect(ensureGradingToolbar(document, () => [fake(1, 1, CHECKS, 'review')])).toBeNull();
     expect(ensureGradingToolbar(document, () => [fake(7, 7, CHECKS)])).toBeNull();
+  });
+});
+
+describe('the author\'s tests, and the marker\'s own work', () => {
+  const withInfo = (usage: number, info: string) => answerHtml(usage, 1).replace('<fieldset>', `<div class="graderinfo">${info}</div><fieldset>`);
+  const AUTHOR = '# %% [code] {"id":"t","test":"private"}\nassert 1 == 1 <\\/script>';
+
+  it('finds the author\'s notebook in the answer\'s own block, and not in another\'s', () => {
+    document.body.innerHTML = withInfo(1, `<p>Notes</p><script type="text/x-pypad-author">\n${AUTHOR}\n</script>`) + answerHtml(2, 1);
+    expect(authorNotebookIn(document.getElementById('question-1-1')!)).toBe('# %% [code] {"id":"t","test":"private"}\nassert 1 == 1 </script>');
+    expect(authorNotebookIn(document.getElementById('question-2-1')!)).toBeNull();
+  });
+
+  it('gives the checks request the author\'s tests when the grader information has them, and nothing otherwise', async () => {
+    document.body.innerHTML = withInfo(1, `<script type="text/x-pypad-author">\n${AUTHOR}\n</script>`) + answerHtml(2, 1);
+    const asked: unknown[] = [];
+    const spy = (usage: number) => { const c = fake(usage, 1, CHECKS) as unknown as { control: (op: string, args?: unknown) => Promise<unknown> }; const inner = c.control; c.control = (op, args) => { asked.push(args); return inner(op); }; return c as unknown as WidgetController; };
+    await testAnswer(spy(1), document);
+    await testAnswer(spy(2), document);
+    expect(asked[0]).toEqual({ tests: '# %% [code] {"id":"t","test":"private"}\nassert 1 == 1 </script>' });
+    expect(asked[1]).toBeUndefined();
+  });
+
+  it('leaves an answer that already has a mark or a comment as it is, unless asked to replace it', async () => {
+    document.body.innerHTML = answerHtml(1, 1, 10);
+    (document.querySelector('[name="q1:1_-mark"]') as HTMLInputElement).value = '7';
+    expect(await testAnswer(fake(1, 1, CHECKS), document)).toEqual({ status: 'kept' });
+    expect((document.querySelector('[name="q1:1_-mark"]') as HTMLInputElement).value).toBe('7');
+    expect(await testAnswer(fake(1, 1, CHECKS), document, { replace: true })).toMatchObject({ status: 'marked' });
+    expect((document.querySelector('[name="q1:1_-mark"]') as HTMLInputElement).value).toBe('5');
+    document.body.innerHTML = answerHtml(1, 1, 10);
+    (document.querySelector('[name="q1:1_-comment"]') as HTMLTextAreaElement).value = '<p>Good start</p>';
+    expect(await testAnswer(fake(1, 1, CHECKS), document)).toEqual({ status: 'kept' });
+  });
+
+  it('counts an empty editor as empty', () => {
+    expect(hasText('')).toBe(false);
+    expect(hasText('<p><br></p>')).toBe(false);
+    expect(hasText('<p>&nbsp;</p>')).toBe(false);
+    expect(hasText('<p>ok</p>')).toBe(true);
+    expect(hasText('0')).toBe(true);
   });
 });

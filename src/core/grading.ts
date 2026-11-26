@@ -90,3 +90,16 @@ export function writeComment(comment: HTMLTextAreaElement, html: string): void {
   if (atto) atto.innerHTML = html;
   setFieldValue(comment, html);
 }
+
+/** The author's notebook in an answer's block on the grading page: Moodle draws the question's grader information (`div.graderinfo`) in the answer's own block, and PyPad's question builder
+ * puts the notebook, with the tests the author keeps from students, in a script block there. Null where there is none. */
+export function authorNotebookIn(block: Element): string | null {
+  const script = block.querySelector('.graderinfo script[type="text/x-pypad-author"]');
+  if (!script) return null;
+  return (script.textContent ?? '').replace(/<\\\/(script)/gi, '</$1').replace(/^\n/, '').replace(/\n$/, '');
+}
+
+/** Whether a mark or comment box already has something in it (a comment's editor holds an empty paragraph when it is empty). */
+export function hasText(value: string | null | undefined): boolean {
+  return (value ?? '').replace(/<[^>]*>|&nbsp;|\s+/g, '') !== '';
+}

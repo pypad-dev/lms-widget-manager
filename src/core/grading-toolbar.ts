@@ -27,11 +27,19 @@ export function ensureGradingToolbar(doc: Document, controllers: () => readonly 
   const status = doc.createElement('span');
   status.setAttribute('role', 'status');
   status.setAttribute('aria-live', 'polite');
-  bar.append(button, status);
+  const replace = doc.createElement('input');
+  replace.type = 'checkbox';
+  replace.id = `${TOOLBAR}-replace`;
+  const replaceLabel = doc.createElement('label');
+  replaceLabel.htmlFor = replace.id;
+  replaceLabel.textContent = ' Replace what is there';
+  replaceLabel.title = 'Also fill in answers that already have a mark or comment, writing over them';
+  replaceLabel.prepend(replace);
+  bar.append(button, replaceLabel, status);
   button.addEventListener('click', () => {
     button.disabled = true;
     status.textContent = 'Testing...';
-    void testAllAnswers(controllers(), doc, { onProgress: (done, total) => { status.textContent = `Testing: ${done} of ${total} done...`; } })
+    void testAllAnswers(controllers(), doc, { replace: replace.checked, onProgress: (done, total) => { status.textContent = `Testing: ${done} of ${total} done...`; } })
       .then((outcomes) => { status.textContent = summary(outcomes); })
       .catch((error) => { status.textContent = `The tests could not be run: ${error instanceof Error ? error.message : String(error)}`; })
       .finally(() => { button.disabled = false; });
