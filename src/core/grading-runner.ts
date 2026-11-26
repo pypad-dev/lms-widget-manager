@@ -4,7 +4,7 @@
  */
 
 import type { WidgetController } from './widget-controller';
-import { authorNotebookIn, commentHtml, fieldPrefix, gradingFields, hasText, score, setFieldValue, suggestedMark, writeComment, type ChecksAnswer } from './grading';
+import { answerPrefix, authorNotebookIn, commentHtml, gradingFields, hasText, score, setFieldValue, suggestedMark, writeComment, type ChecksAnswer } from './grading';
 
 export type Outcome =
   | { status: 'marked'; passed: number; total: number }
@@ -24,7 +24,7 @@ export interface RunOptions {
 
 /** Tests one answer and fills in its fields. */
 export async function testAnswer(controller: WidgetController, doc: Document, options: { replace?: boolean } = {}): Promise<Outcome> {
-  const prefix = fieldPrefix(controller.getFieldName());
+  const prefix = answerPrefix(controller.getMountPoint(), controller.getFieldName());
   const fields = prefix ? gradingFields(doc, prefix) : null;
   if (!fields || (!fields.mark && !fields.comment)) return { status: 'no-fields' };
   if (!options.replace && (hasText(fields.mark?.value) || hasText(fields.comment?.value))) return { status: 'kept' };     // (the marker's own work is not written over)

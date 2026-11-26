@@ -23,6 +23,24 @@ export function fieldPrefix(answerName: string | null | undefined): string | nul
   return match ? match[1] : null;
 }
 
+/**
+ * The prefix of an answer's fields. Moodle 4.5's marking page gives the answer's read-only textarea no name, so the prefix is taken from the answer's own block (`div.que`): from a mark or
+ * comment field in it (the fields of this answer and no other), or from the block's id (`question-12-3` → `q12:3_`); the textarea's name is the fallback for a page laid out otherwise.
+ */
+export function answerPrefix(mount: Element | null | undefined, answerName: string | null | undefined): string | null {
+  const block = mount?.closest('.que') ?? null;
+  if (block) {
+    for (const field of block.querySelectorAll('[name$="_-mark"], [name$="_-comment"], [name$="_-maxmark"]')) {
+      const match = /^(q\d+:\d+_)-(?:mark|comment|maxmark)$/.exec(field.getAttribute('name') ?? '');
+      if (match) return match[1];
+    }
+  }
+  const named = fieldPrefix(answerName);
+  if (named) return named;
+  const id = /^question-(\d+)-(\d+)$/.exec(block?.id ?? '');
+  return id ? `q${id[1]}:${id[2]}_` : null;
+}
+
 /** The answer's mark, maximum and comment fields in `doc`, as Moodle names them. */
 export function gradingFields(doc: Document, prefix: string): GradingFields {
   if (!/^q\d+:\d+_$/.test(prefix)) return { mark: null, maxMark: null, comment: null };       // (only a prefix Moodle makes: then it needs no escaping in a selector)

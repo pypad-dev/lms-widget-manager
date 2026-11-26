@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { authorNotebookIn, commentHtml, fieldPrefix, gradingFields, hasText, pointsOf, score, suggestedMark, writeComment } from '../src/core/grading.ts';
+import { answerPrefix, authorNotebookIn, commentHtml, fieldPrefix, gradingFields, hasText, pointsOf, score, suggestedMark, writeComment } from '../src/core/grading.ts';
 import { summary, testAllAnswers, testAnswer } from '../src/core/grading-runner.ts';
 import { ensureGradingToolbar } from '../src/core/grading-toolbar.ts';
 import type { WidgetController } from '../src/core/widget-controller.ts';
@@ -173,5 +173,28 @@ describe('the author\'s tests, and the marker\'s own work', () => {
     expect(hasText('<p>&nbsp;</p>')).toBe(false);
     expect(hasText('<p>ok</p>')).toBe(true);
     expect(hasText('0')).toBe(true);
+  });
+});
+
+describe('finding an answer\'s fields on the real marking page, where the answer\'s textarea has no name', () => {
+  const nameless = (usage: number, slot: number, answer: unknown): WidgetController => ({ ...(fake(usage, slot, answer) as object), getFieldName: () => null }) as unknown as WidgetController;
+
+  it('takes the prefix from the fields in the answer\'s own block, then from the textarea\'s name, then from the block\'s id', () => {
+    document.body.innerHTML = answerHtml(40, 1);
+    const mount = document.getElementById('w40')!;
+    expect(answerPrefix(mount, null)).toBe('q40:1_');
+    expect(answerPrefix(mount, 'q99:9_answer')).toBe('q40:1_');                       // (the block says which: the name could be another answer's)
+    document.body.innerHTML = '<div id="w"></div>';
+    expect(answerPrefix(document.getElementById('w'), 'q12:3_answer')).toBe('q12:3_');
+    document.body.innerHTML = '<div class="que" id="question-7-2"><div id="w"></div></div>';
+    expect(answerPrefix(document.getElementById('w'), null)).toBe('q7:2_');
+    expect(answerPrefix(null, null)).toBeNull();
+  });
+
+  it('marks an answer whose textarea has no name, each answer into its own block', async () => {
+    document.body.innerHTML = answerHtml(40, 1, 10) + answerHtml(41, 1, 10);
+    expect(await testAnswer(nameless(41, 1, CHECKS), document)).toMatchObject({ status: 'marked' });
+    expect((document.querySelector('[name="q41:1_-mark"]') as HTMLInputElement).value).toBe('5');
+    expect((document.querySelector('[name="q40:1_-mark"]') as HTMLInputElement).value).toBe('');
   });
 });

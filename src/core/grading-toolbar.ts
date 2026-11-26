@@ -4,7 +4,7 @@
  */
 
 import type { WidgetController } from './widget-controller';
-import { fieldPrefix, gradingFields } from './grading';
+import { answerPrefix, gradingFields } from './grading';
 import { summary, testAllAnswers } from './grading-runner';
 
 const TOOLBAR = 'lms-widget-grading';
@@ -13,7 +13,7 @@ export function ensureGradingToolbar(doc: Document, controllers: () => readonly 
   const existing = doc.querySelector<HTMLElement>(`[data-${TOOLBAR}]`);
   if (existing) return existing;
   const marking = controllers().filter((c) => c.getConfig().runMode === 'grade');
-  const first = marking.find((c) => { const prefix = fieldPrefix(c.getFieldName()); if (!prefix) return false; const f = gradingFields(doc, prefix); return !!(f.mark || f.comment); });
+  const first = marking.find((c) => { const prefix = answerPrefix(c.getMountPoint(), c.getFieldName()); if (!prefix) return false; const f = gradingFields(doc, prefix); return !!(f.mark || f.comment); });
   if (!first) return null;
   const bar = doc.createElement('div');
   bar.setAttribute(`data-${TOOLBAR}`, '');
