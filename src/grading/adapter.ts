@@ -16,6 +16,8 @@ export interface GradingAdapter {
   fieldsFor(mount: Element, answerName: string | null, doc: Document): GradingFields | null;
   /** The text the author left for this answer's widget (what to grade with), where the page keeps one; null if there is none. */
   payloadFor(mount: Element): string | null;
+  /** Whether the question says its marking tests must come from the payload (so that a missing payload is a fault, not a question that has none). Optional: false where the page cannot say. */
+  requiresPayload?(mount: Element): boolean;
   /** Whether a marker has already put a mark or a comment in. */
   hasWork(fields: GradingFields): boolean;
   /** Writes the mark and the comment as if typed (the page's own form and scripts see them). Nothing is saved. */

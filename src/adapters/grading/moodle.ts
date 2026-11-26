@@ -90,6 +90,8 @@ export const moodleGradingAdapter: GradingAdapter = {
     const block = mount.closest('.que');
     return block ? authorNotebookIn(block) : null;
   },
+  /** The question's embed carries `data-lms-grader-source="payload"`; the loader copies it to the wrapper around the widget. */
+  requiresPayload: (mount) => mount.closest('[data-lms-grader-source="payload"]') !== null,
   hasWork: (fields) => hasText(fields.mark?.value) || hasText(fields.comment?.value),
   setMark: (fields, mark) => { if (fields.mark) setFieldValue(fields.mark, mark); },
   setComment: (fields, html) => { if (fields.comment) writeComment(fields.comment, html); },

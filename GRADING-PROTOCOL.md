@@ -166,15 +166,15 @@ points × the question's 1.00 = 0.25.
 | Structure | built: an extension (`src/grading`), a `GradingAdapter` (Moodle's in `src/adapters/grading/moodle.ts`), `data-lms-grading="off"` | the same |
 | Fields | from the answer's own block (built) | the same |
 | No overwrite | built | the same |
-| `data-lms-grader-source` | not built | refuse when the question says `payload` and there is none |
-| Comment's first line | says it was suggested | says from where (`testsFrom`) |
+| `data-lms-grader-source` | built: the adapter's `requiresPayload`; the manager refuses when the question says `payload` and there is none | the same |
+| Comment's first line | built: the author's tests, or the question's own (no author's tests found) | from `testsFrom` |
 
 PyPad would answer `GRADE_REQUEST` by running its `checks`: `source: 'payload'` gives `tests`, `self` gives none; `testsFrom` is `supplied` or `template`. Its `PYPAD_CONTROL` stays, for a page that embeds
 and drives PyPad.
 
 ## 10. Decided, and to decide
 
-**Decided** (2026-11-26; the first two are proposals taken as the working rule, to change if they do not suit):
+**Decided** (2026-11-26; the first two are proposals taken as the working rule, to change if they do not suit; the flag is built):
 
 - A block that names a kind (`data-widget`) goes only to a widget of that kind; a block with no name goes to any widget. Not a security boundary.
 - The question can declare `data-lms-grader-source="payload"`; the manager refuses to mark from the template alone when it does and no payload is found; otherwise it marks from the template and says

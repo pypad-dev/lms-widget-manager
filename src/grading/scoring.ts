@@ -33,10 +33,18 @@ export function suggestedMark(passed: number, total: number, maxMark: number): n
 
 const escape = (text: string): string => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-/** The comment: a line that says it was suggested, then each check, passed or not, with its points and the reason for one that did not. */
-export function commentHtml(answer: ChecksAnswer): string {
+/** Where the tests that marked an answer came from (docs: GRADING-PROTOCOL.md): the author's, sent to the widget; or the question's own, which the widget had with the question. */
+export type TestsSource = 'supplied' | 'template';
+
+const FROM: Record<TestsSource, string> = {
+  supplied: "Suggested from the author's tests",
+  template: "Suggested from the question's own tests (no author's tests were found in the grader information)",
+};
+
+/** The comment: a line that says it was suggested, and from which tests, then each check, passed or not, with its points and the reason for one that did not. */
+export function commentHtml(answer: ChecksAnswer, source?: TestsSource): string {
   const rows = answer.checks.map((check) =>
     `<li>${check.passed ? '✔' : '✘'} ${escape(check.name)} (${pointsText(pointsOf(check))})${check.passed || !check.message ? '' : `: <code>${escape(check.message)}</code>`}</li>`).join('');
   const { gained, possible } = score(answer.checks);
-  return `<p><strong>Suggested from the tests</strong>: ${answer.passed} of ${answer.total} passed (${gained} of ${pointsText(possible)}).</p><ul>${rows}</ul>`;
+  return `<p><strong>${source ? FROM[source] : 'Suggested from the tests'}</strong>: ${answer.passed} of ${answer.total} passed (${gained} of ${pointsText(possible)}).</p><ul>${rows}</ul>`;
 }

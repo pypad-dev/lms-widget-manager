@@ -84,7 +84,7 @@ describe('the rules', () => {
 describe('testing the answers', () => {
   it('fills in an answer\'s mark and comment from its checks', async () => {
     document.body.innerHTML = answerHtml(1, 1, 10);
-    expect(await testAnswer(fake(1, 1, CHECKS), document)).toEqual({ status: 'marked', passed: 1, total: 2 });
+    expect(await testAnswer(fake(1, 1, CHECKS), document)).toEqual({ status: 'marked', passed: 1, total: 2, from: 'template' });
     expect((document.querySelector('[name="q1:1_-mark"]') as HTMLInputElement).value).toBe('5');
     expect((document.querySelector('[name="q1:1_-comment"]') as HTMLTextAreaElement).value).toContain('1 of 2 passed');
   });
@@ -117,7 +117,7 @@ describe('testing the answers', () => {
     expect(most).toBe(2);
     expect(progress).toEqual(['1/3', '2/3', '3/3']);
     expect(summary([...outcomes, { status: 'no-tests' }, { status: 'failed', reason: 'Python did not start.' }]))
-      .toBe('Tests run on 5 answers: 3 filled in (not saved: check them, then save). 1 had no tests. 1 could not be run (Python did not start.).');
+      .toBe('Tests run on 5 answers: 3 filled in (not saved: check them, then save). 3 marked from the question\'s own tests only: no author\'s tests were found in the grader information. 1 had no tests. 1 could not be run (Python did not start.).');
   });
 
   it('shows the button once, above the first answer being marked, and runs every answer\'s tests when pressed', async () => {
@@ -242,5 +242,45 @@ describe('grading is an extension, and names no LMS', () => {
     console.error = () => undefined;
     try { notifyWidgetReady(fake(1, 1, CHECKS) as unknown as WidgetController, { document, controllers: () => [] }); } finally { console.error = quiet; }
     expect(reached).toBe(true);
+  });
+});
+
+describe('a question that says its tests are in the grader information', () => {
+  const AUTHOR = '# %% [code] {"id":"t","test":"private"}\nassert True';
+  /** An answer in a block, inside the wrapper the loader makes (it carries the embed block's data- attributes), with or without the author's notebook in the grader information. */
+  const page = (flag: boolean, withBlock: boolean) => {
+    document.body.innerHTML = `<div ${flag ? 'data-lms-grader-source="payload"' : ''}>` +
+      answerHtml(1, 1, 10).replace('<fieldset>', `${withBlock ? `<div class="graderinfo"><script type="text/x-pypad-author">\n${AUTHOR}\n</script></div>` : ''}<fieldset>`) + '</div>';
+  };
+  const mark = () => (document.querySelector('[name="q1:1_-mark"]') as HTMLInputElement).value;
+  const comment = () => (document.querySelector('[name="q1:1_-comment"]') as HTMLTextAreaElement).value;
+
+  it('refuses to mark when the tests are not there, and writes nothing', async () => {
+    page(true, false);
+    expect(await testAnswer(fake(1, 1, CHECKS), document)).toEqual({ status: 'missing-tests' });
+    expect([mark(), comment()]).toEqual(['', '']);
+  });
+
+  it('says so even for an answer that already has work (the fault is the question\'s)', async () => {
+    page(true, false);
+    (document.querySelector('[name="q1:1_-mark"]') as HTMLInputElement).value = '3';
+    expect(await testAnswer(fake(1, 1, CHECKS), document)).toEqual({ status: 'missing-tests' });
+  });
+
+  it('marks from the payload when it is there, and the comment says the author\'s tests', async () => {
+    page(true, true);
+    expect(await testAnswer(fake(1, 1, CHECKS), document)).toMatchObject({ status: 'marked', from: 'supplied' });
+    expect(comment()).toContain('Suggested from the author\'s tests');
+  });
+
+  it('marks from the question\'s own tests when the question does not say, and the comment says so', async () => {
+    page(false, false);
+    expect(await testAnswer(fake(1, 1, CHECKS), document)).toMatchObject({ status: 'marked', from: 'template' });
+    expect(comment()).toContain('Suggested from the question\'s own tests (no author\'s tests were found in the grader information)');
+  });
+
+  it('is counted in what the marker is told', () => {
+    expect(summary([{ status: 'missing-tests' }, { status: 'missing-tests' }, { status: 'marked', passed: 1, total: 1, from: 'supplied' }]))
+      .toBe('Tests run on 3 answers: 1 filled in (not saved: check them, then save). 2 not marked: the question says its tests are in the grader information, and none were found there (check the question\'s Information for graders).');
   });
 });

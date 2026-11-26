@@ -6,12 +6,13 @@
 import type { WidgetController } from '../core/widget-controller';
 import { moodleGradingAdapter } from '../adapters/grading/moodle';
 import type { GradingAdapter } from './adapter';
-import { commentHtml, score, suggestedMark, type ChecksAnswer } from './scoring';
+import { commentHtml, score, suggestedMark, type ChecksAnswer, type TestsSource } from './scoring';
 
 export type Outcome =
-  | { status: 'marked'; passed: number; total: number }
+  | { status: 'marked'; passed: number; total: number; from: TestsSource }
   | { status: 'no-tests' }
   | { status: 'kept' }
+  | { status: 'missing-tests' }
   | { status: 'no-fields' }
   | { status: 'failed'; reason: string };
 
@@ -32,8 +33,9 @@ export async function testAnswer(controller: WidgetController, doc: Document, op
   const mount = controller.getMountPoint();
   const fields = adapter.fieldsFor(mount, controller.getFieldName(), doc);
   if (!fields || (!fields.mark && !fields.comment)) return { status: 'no-fields' };
-  if (!options.replace && adapter.hasWork(fields)) return { status: 'kept' };     // (the marker's own work is not written over)
   const tests = adapter.payloadFor(mount);                                        // (the author's tests, from where the page keeps them, in place of any in the student's notebook)
+  if (!tests && adapter.requiresPayload?.(mount)) return { status: 'missing-tests' };   // (the question says they are there: marking from fewer would look the same, and be wrong)
+  if (!options.replace && adapter.hasWork(fields)) return { status: 'kept' };     // (the marker's own work is not written over)
   let answer: ChecksAnswer;
   try {
     answer = (await controller.control('checks', tests ? { tests } : undefined)) as ChecksAnswer;
@@ -43,8 +45,9 @@ export async function testAnswer(controller: WidgetController, doc: Document, op
   if (!answer || !Array.isArray(answer.checks) || answer.total === 0) return { status: 'no-tests' };
   const { gained, possible } = score(answer.checks);
   if (fields.mark && fields.maxMark !== null) adapter.setMark(fields, String(suggestedMark(gained, possible, fields.maxMark)));
-  if (fields.comment) adapter.setComment(fields, commentHtml(answer));
-  return { status: 'marked', passed: answer.passed, total: answer.total };
+  const from: TestsSource = tests ? 'supplied' : 'template';
+  if (fields.comment) adapter.setComment(fields, commentHtml(answer, from));
+  return { status: 'marked', passed: answer.passed, total: answer.total, from };
 }
 
 /** Tests every answer being marked (in `grade` mode) on the page, a few at a time, in the order they are on the page. */
@@ -69,6 +72,9 @@ export function summary(outcomes: readonly Outcome[]): string {
   const count = (status: Outcome['status']) => outcomes.filter((o) => o.status === status).length;
   const marked = count('marked');
   const parts = [`Tests run on ${outcomes.length} ${outcomes.length === 1 ? 'answer' : 'answers'}: ${marked} filled in (not saved: check them, then save).`];
+  const template = outcomes.filter((o) => o.status === 'marked' && o.from === 'template').length;
+  if (template) parts.push(`${template} marked from the question's own tests only: no author's tests were found in the grader information.`);
+  if (count('missing-tests')) parts.push(`${count('missing-tests')} not marked: the question says its tests are in the grader information, and none were found there (check the question's Information for graders).`);
   if (count('kept')) parts.push(`${count('kept')} already had a mark or comment: not changed (tick "Replace what is there" to write over them).`);
   if (count('no-tests')) parts.push(`${count('no-tests')} had no tests.`);
   if (count('no-fields')) parts.push(`${count('no-fields')} had no mark or comment box on this page.`);
