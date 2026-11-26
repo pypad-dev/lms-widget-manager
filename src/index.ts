@@ -3,7 +3,8 @@ import { DEFAULT_ANSWER_FORMAT, isAnswerFormat } from './adapters/storage/answer
 import { MoodleTextareaAdapter } from './adapters/storage/moodle-textarea';
 import { IframeMessengerAdapter } from './adapters/messenger/iframe';
 import { DOMEventMessengerAdapter } from './adapters/messenger/web-component';
-import { ensureGradingToolbar } from './core/grading-toolbar';
+import { registerExtension, notifyWidgetReady } from './core/extensions';
+import { gradingExtension } from './grading';
 import { WidgetController } from './core/widget-controller';
 import { SETUP_PROBLEMS, showSetupProblem } from './core/setup-problem';
 import { MoodleContextAdapter, htmlAnswerBoxProblem } from './adapters/context/moodle';
@@ -15,9 +16,12 @@ export { IframeMessengerAdapter } from './adapters/messenger/iframe';
 export { DOMEventMessengerAdapter, WebComponentMessengerAdapter } from './adapters/messenger/web-component';
 export { MoodleContextAdapter, htmlAnswerBoxProblem } from './adapters/context/moodle';
 export { WidgetController } from './core/widget-controller';
-export { fieldPrefix, answerPrefix, gradingFields, suggestedMark, score, pointsOf, authorNotebookIn, hasText, commentHtml, writeComment, type CheckResult, type ChecksAnswer, type GradingFields } from './core/grading';
-export { testAnswer, testAllAnswers, summary, type Outcome } from './core/grading-runner';
-export { ensureGradingToolbar } from './core/grading-toolbar';
+export { registerExtension, type ManagerExtension, type ManagerContext } from './core/extensions';
+export { gradingExtension, ensureGradingToolbar, testAnswer, testAllAnswers, summary, commentHtml, pointsOf, score, suggestedMark, type Outcome, type CheckResult, type ChecksAnswer, type GradingAdapter, type GradingFields } from './grading';
+export { moodleGradingAdapter, fieldPrefix, answerPrefix, gradingFields, authorNotebookIn, hasText, writeComment } from './adapters/grading/moodle';
+
+// The extensions this build has: take a line out and its feature is gone from the bundle
+registerExtension(gradingExtension);
 export { SETUP_PROBLEMS, showSetupProblem, type SetupProblem } from './core/setup-problem';
 
 /**
@@ -124,8 +128,8 @@ export class WidgetBootstrapper {
           };
 
           activeControllers.push(controllerInstance);
-          // A marker's page: a button to run every answer's tests and fill in the suggested marks and comments (src/core/grading-toolbar.ts)
-          if (controllerInstance.getConfig().runMode === 'grade') ensureGradingToolbar(document, () => activeControllers);
+          // Extensions (grading is one: a marker's page gets a button to run every answer's tests; src/grading)
+          notifyWidgetReady(controllerInstance, { document, controllers: () => activeControllers });
 
           // An answer box in HTML format loses notebooks: say so and lock, rather than seem to save (a marker or a review has nothing to save)
           const htmlProblem = htmlAnswerBoxProblem(targetTextarea);

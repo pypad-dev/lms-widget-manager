@@ -1,19 +1,20 @@
 /**
- * The button a marker presses to test every answer on a grading page (src/core/grading-runner.ts). Shown once, above the first answer, when the page has an answer in a widget
+ * The button a marker presses to test every answer on a grading page (src/grading/runner.ts). Shown once, above the first answer, when the page has an answer in a widget
  * being marked whose mark or comment box is on the page.
  */
 
-import type { WidgetController } from './widget-controller';
-import { answerPrefix, gradingFields } from './grading';
-import { summary, testAllAnswers } from './grading-runner';
+import type { WidgetController } from '../core/widget-controller';
+import { moodleGradingAdapter } from '../adapters/grading/moodle';
+import type { GradingAdapter } from './adapter';
+import { summary, testAllAnswers } from './runner';
 
 const TOOLBAR = 'lms-widget-grading';
 
-export function ensureGradingToolbar(doc: Document, controllers: () => readonly WidgetController[]): HTMLElement | null {
+export function ensureGradingToolbar(doc: Document, controllers: () => readonly WidgetController[], adapter: GradingAdapter = moodleGradingAdapter): HTMLElement | null {
   const existing = doc.querySelector<HTMLElement>(`[data-${TOOLBAR}]`);
   if (existing) return existing;
   const marking = controllers().filter((c) => c.getConfig().runMode === 'grade');
-  const first = marking.find((c) => { const prefix = answerPrefix(c.getMountPoint(), c.getFieldName()); if (!prefix) return false; const f = gradingFields(doc, prefix); return !!(f.mark || f.comment); });
+  const first = marking.find((c) => { const f = adapter.fieldsFor(c.getMountPoint(), c.getFieldName(), doc); return !!(f && (f.mark || f.comment)); });
   if (!first) return null;
   const bar = doc.createElement('div');
   bar.setAttribute(`data-${TOOLBAR}`, '');
@@ -39,7 +40,7 @@ export function ensureGradingToolbar(doc: Document, controllers: () => readonly 
   button.addEventListener('click', () => {
     button.disabled = true;
     status.textContent = 'Testing...';
-    void testAllAnswers(controllers(), doc, { replace: replace.checked, onProgress: (done, total) => { status.textContent = `Testing: ${done} of ${total} done...`; } })
+    void testAllAnswers(controllers(), doc, { replace: replace.checked, adapter, onProgress: (done, total) => { status.textContent = `Testing: ${done} of ${total} done...`; } })
       .then((outcomes) => { status.textContent = summary(outcomes); })
       .catch((error) => { status.textContent = `The tests could not be run: ${error instanceof Error ? error.message : String(error)}`; })
       .finally(() => { button.disabled = false; });

@@ -1,10 +1,12 @@
 /**
- * Runs the checks of every answer on a grading page and fills in the suggested marks and comments (src/core/grading.ts has the rules). A few answers at a time, so a page of
+ * Runs the checks of every answer on a grading page and fills in the suggested marks and comments (src/grading/scoring.ts has the rules). A few answers at a time, so a page of
  * many answers does not ask the browser for many Pythons at once; the widgets also keep to a budget of their own. Nothing is saved: the marker reads and saves.
  */
 
-import type { WidgetController } from './widget-controller';
-import { answerPrefix, authorNotebookIn, commentHtml, gradingFields, hasText, score, setFieldValue, suggestedMark, writeComment, type ChecksAnswer } from './grading';
+import type { WidgetController } from '../core/widget-controller';
+import { moodleGradingAdapter } from '../adapters/grading/moodle';
+import type { GradingAdapter } from './adapter';
+import { commentHtml, score, suggestedMark, type ChecksAnswer } from './scoring';
 
 export type Outcome =
   | { status: 'marked'; passed: number; total: number }
@@ -16,6 +18,8 @@ export type Outcome =
 export interface RunOptions {
   /** How many answers are tested at once (default 2). */
   concurrency?: number;
+  /** The page's side (default: Moodle's). */
+  adapter?: GradingAdapter;
   /** Write over a mark or comment the marker has already put in (default: leave an answer that has either as it is). */
   replace?: boolean;
   /** Told after each answer: how many are done, of how many. */
@@ -23,13 +27,13 @@ export interface RunOptions {
 }
 
 /** Tests one answer and fills in its fields. */
-export async function testAnswer(controller: WidgetController, doc: Document, options: { replace?: boolean } = {}): Promise<Outcome> {
-  const prefix = answerPrefix(controller.getMountPoint(), controller.getFieldName());
-  const fields = prefix ? gradingFields(doc, prefix) : null;
+export async function testAnswer(controller: WidgetController, doc: Document, options: { replace?: boolean; adapter?: GradingAdapter } = {}): Promise<Outcome> {
+  const adapter = options.adapter ?? moodleGradingAdapter;
+  const mount = controller.getMountPoint();
+  const fields = adapter.fieldsFor(mount, controller.getFieldName(), doc);
   if (!fields || (!fields.mark && !fields.comment)) return { status: 'no-fields' };
-  if (!options.replace && (hasText(fields.mark?.value) || hasText(fields.comment?.value))) return { status: 'kept' };     // (the marker's own work is not written over)
-  const block = controller.getMountPoint().closest('.que');
-  const tests = block ? authorNotebookIn(block) : null;          // (the author's tests, from the question's grader information, in place of any in the student's notebook)
+  if (!options.replace && adapter.hasWork(fields)) return { status: 'kept' };     // (the marker's own work is not written over)
+  const tests = adapter.payloadFor(mount);                                        // (the author's tests, from where the page keeps them, in place of any in the student's notebook)
   let answer: ChecksAnswer;
   try {
     answer = (await controller.control('checks', tests ? { tests } : undefined)) as ChecksAnswer;
@@ -38,8 +42,8 @@ export async function testAnswer(controller: WidgetController, doc: Document, op
   }
   if (!answer || !Array.isArray(answer.checks) || answer.total === 0) return { status: 'no-tests' };
   const { gained, possible } = score(answer.checks);
-  if (fields.mark && fields.maxMark !== null) setFieldValue(fields.mark, String(suggestedMark(gained, possible, fields.maxMark)));
-  if (fields.comment) writeComment(fields.comment, commentHtml(answer));
+  if (fields.mark && fields.maxMark !== null) adapter.setMark(fields, String(suggestedMark(gained, possible, fields.maxMark)));
+  if (fields.comment) adapter.setComment(fields, commentHtml(answer));
   return { status: 'marked', passed: answer.passed, total: answer.total };
 }
 
@@ -52,7 +56,7 @@ export async function testAllAnswers(controllers: readonly WidgetController[], d
   const worker = async (): Promise<void> => {
     while (next < marking.length) {
       const at = next++;
-      outcomes[at] = await testAnswer(marking[at], doc, { replace: options.replace });
+      outcomes[at] = await testAnswer(marking[at], doc, { replace: options.replace, adapter: options.adapter });
       options.onProgress?.(++done, marking.length);
     }
   };

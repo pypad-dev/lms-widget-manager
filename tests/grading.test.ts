@@ -1,7 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { answerPrefix, authorNotebookIn, commentHtml, fieldPrefix, gradingFields, hasText, pointsOf, score, suggestedMark, writeComment } from '../src/core/grading.ts';
-import { summary, testAllAnswers, testAnswer } from '../src/core/grading-runner.ts';
-import { ensureGradingToolbar } from '../src/core/grading-toolbar.ts';
+import { answerPrefix, authorNotebookIn, fieldPrefix, gradingFields, hasText, writeComment } from '../src/adapters/grading/moodle.ts';
+import { commentHtml, pointsOf, score, suggestedMark } from '../src/grading/scoring.ts';
+import { gradingExtension } from '../src/grading/index.ts';
+import { notifyWidgetReady, registerExtension } from '../src/core/extensions.ts';
+import type { GradingAdapter } from '../src/grading/adapter.ts';
+import { summary, testAllAnswers, testAnswer } from '../src/grading/runner.ts';
+import { ensureGradingToolbar } from '../src/grading/toolbar.ts';
 import type { WidgetController } from '../src/core/widget-controller.ts';
 
 /** One answer of Moodle's manual grading form, as question/behaviour/rendererbase.php writes it. */
@@ -196,5 +200,47 @@ describe('finding an answer\'s fields on the real marking page, where the answer
     expect(await testAnswer(nameless(41, 1, CHECKS), document)).toMatchObject({ status: 'marked' });
     expect((document.querySelector('[name="q41:1_-mark"]') as HTMLInputElement).value).toBe('5');
     expect((document.querySelector('[name="q40:1_-mark"]') as HTMLInputElement).value).toBe('');
+  });
+});
+
+describe('grading is an extension, and names no LMS', () => {
+  it('works through any adapter: a page that is not Moodle\'s', async () => {
+    document.body.innerHTML = '<div id="w1"></div><input id="m"><textarea id="c"></textarea>';
+    const fields = { mark: document.getElementById('m') as HTMLInputElement, maxMark: 4, comment: document.getElementById('c') as HTMLTextAreaElement };
+    const calls: string[] = [];
+    const adapter: GradingAdapter = {
+      fieldsFor: () => fields, payloadFor: () => 'PAYLOAD', hasWork: () => false,
+      setMark: (f, mark) => { calls.push('mark ' + mark); f.mark!.value = mark; },
+      setComment: (f, html) => { calls.push('comment'); f.comment!.value = html; },
+    };
+    let asked: unknown;
+    const controller = { ...(fake(1, 1, CHECKS) as object), control: async (_op: string, args?: unknown) => { asked = args; return CHECKS; } } as unknown as WidgetController;
+    expect(await testAnswer(controller, document, { adapter })).toMatchObject({ status: 'marked' });
+    expect(asked).toEqual({ tests: 'PAYLOAD' });
+    expect(calls).toEqual(['mark 2', 'comment']);                                    // (1 of 2 points of 4)
+  });
+
+  it('is told when a widget is ready, builds the button on a marker\'s page only, and not where it is switched off', () => {
+    const marking = (id: string, off = false) => {
+      document.body.innerHTML = (off ? '<div data-lms-grading="off">' : '<div>') + answerHtml(1, 1) + '</div>';
+      const c = fake(1, 1, CHECKS, id) as unknown as WidgetController;
+      notifyWidgetReady(c, { document, controllers: () => [c] });
+      return document.querySelectorAll('[data-lms-widget-grading]').length;
+    };
+    registerExtension(gradingExtension);
+    registerExtension(gradingExtension);                                              // (a second registration of the same name changes nothing)
+    expect(marking('grade')).toBe(1);
+    expect(marking('attempt')).toBe(0);
+    expect(marking('grade', true)).toBe(0);
+  });
+
+  it('an extension that fails does not stop the others', () => {
+    let reached = false;
+    registerExtension({ name: 'broken', widgetReady() { throw new Error('no'); } });
+    registerExtension({ name: 'after', widgetReady() { reached = true; } });
+    const quiet = console.error;
+    console.error = () => undefined;
+    try { notifyWidgetReady(fake(1, 1, CHECKS) as unknown as WidgetController, { document, controllers: () => [] }); } finally { console.error = quiet; }
+    expect(reached).toBe(true);
   });
 });
