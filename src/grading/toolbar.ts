@@ -1,11 +1,12 @@
 /**
- * The button a marker presses to test every answer on a grading page (src/grading/runner.ts). Shown once, above the first answer, when the page has an answer in a widget
- * being marked whose mark or comment box is on the page.
+ * The bar a marker uses to test every answer on a grading page (src/grading/runner.ts): the button, and two choices (what to fill in; whether to write over what is there). Shown once,
+ * above the first answer, when the page has an answer in a widget being marked whose mark or comment box is on the page.
  */
 
 import type { WidgetController } from '../core/widget-controller';
 import { moodleGradingAdapter } from '../adapters/grading/moodle';
 import type { GradingAdapter } from './adapter';
+import { FILL_ID, REPLACE_ID, readChoices, storeFill, storedFill, type Fill } from './choices';
 import { summary, testAllAnswers } from './runner';
 
 const TOOLBAR = 'lms-widget-grading';
@@ -30,17 +31,32 @@ export function ensureGradingToolbar(doc: Document, controllers: () => readonly 
   status.setAttribute('aria-live', 'polite');
   const replace = doc.createElement('input');
   replace.type = 'checkbox';
-  replace.id = `${TOOLBAR}-replace`;
+  replace.id = REPLACE_ID;
   const replaceLabel = doc.createElement('label');
   replaceLabel.htmlFor = replace.id;
   replaceLabel.textContent = ' Replace what is there';
   replaceLabel.title = 'Also fill in answers that already have a mark or comment, writing over them';
   replaceLabel.prepend(replace);
-  bar.append(button, replaceLabel, status);
+  const fill = doc.createElement('select');
+  fill.id = FILL_ID;
+  for (const [value, label] of [['marks-and-comments', 'Marks and comments'], ['comments-only', 'Comments only']] as const) {
+    const option = doc.createElement('option');
+    option.value = value;
+    option.textContent = label;
+    fill.append(option);
+  }
+  fill.value = storedFill();
+  fill.title = 'What to fill in: the mark and the comment, or only the comment (your own mark stands)';
+  fill.addEventListener('change', () => storeFill(fill.value as Fill));
+  const fillLabel = doc.createElement('label');
+  fillLabel.htmlFor = FILL_ID;
+  fillLabel.textContent = 'Fill in ';
+  fillLabel.append(fill);
+  bar.append(button, fillLabel, replaceLabel, status);
   button.addEventListener('click', () => {
     button.disabled = true;
     status.textContent = 'Testing...';
-    void testAllAnswers(controllers(), doc, { replace: replace.checked, adapter, onProgress: (done, total) => { status.textContent = `Testing: ${done} of ${total} done...`; } })
+    void testAllAnswers(controllers(), doc, { ...readChoices(doc), adapter, onProgress: (done, total) => { status.textContent = `Testing: ${done} of ${total} done...`; } })
       .then((outcomes) => { status.textContent = summary(outcomes); })
       .catch((error) => { status.textContent = `The tests could not be run: ${error instanceof Error ? error.message : String(error)}`; })
       .finally(() => { button.disabled = false; });

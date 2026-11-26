@@ -17,7 +17,7 @@ export { DOMEventMessengerAdapter, WebComponentMessengerAdapter } from './adapte
 export { MoodleContextAdapter, htmlAnswerBoxProblem } from './adapters/context/moodle';
 export { WidgetController } from './core/widget-controller';
 export { registerExtension, type ManagerExtension, type ManagerContext } from './core/extensions';
-export { gradingExtension, ensureGradingToolbar, testAnswer, testAllAnswers, summary, commentHtml, pointsOf, score, suggestedMark, type Outcome, type CheckResult, type ChecksAnswer, type GradingAdapter, type GradingFields } from './grading';
+export { gradingExtension, ensureGradingToolbar, ensureAnswerButton, testAnswer, testAllAnswers, summary, outcomeText, commentHtml, pointsOf, score, suggestedMark, type Outcome, type CheckResult, type ChecksAnswer, type GradingAdapter, type GradingFields } from './grading';
 export { moodleGradingAdapter, fieldPrefix, answerPrefix, gradingFields, authorNotebookIn, hasText, writeComment } from './adapters/grading/moodle';
 
 // The extensions this build has: take a line out and its feature is gone from the bundle

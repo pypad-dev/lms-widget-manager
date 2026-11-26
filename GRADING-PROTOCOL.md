@@ -86,7 +86,10 @@ cannot, or whose sealed block is missing or changed, answers with an error, neve
 - **Comment** = a first line that says it was suggested, and from where (`testsFrom`), then each item, passed or not, with its points and the message of one that failed, then `note`.
   (`Suggested from the author's tests: 1 of 2 passed (1 of 4 points).` or `Suggested from the question's own tests (public and protected; no private tests were used): …`)
 - **A mark or comment already in the box is left as it is**; the summary says how many. A tick, *Replace what is there*, writes over them.
-- **Planned:** a choice of *Marks and comments* or *Comments only*; a button on each answer as well as the one for all.
+- **Fill in:** *Marks and comments* or *Comments only* (a select in the bar, remembered in this browser). *Comments only* writes the comment and never touches the mark box; a mark already there is
+  the marker's own and does not count as work to protect, but a comment already there does.
+- **One answer:** a *Run tests on this answer* button above each answer's widget, as well as the one for all. It follows the bar's two choices, so an answer with work is kept until
+  *Replace what is there* is ticked, and it says in a sentence what became of the answer.
 - **Order and pace:** answers on the page, in page order, a few at a time: the manager's `concurrency` (default 2), or the widget's `maxConcurrent` if less. A widget that does not answer in
   five minutes is shown as *could not be run*.
 - Nothing is saved. The mark and comment are written as if typed, so the LMS's own form and scripts see them, and the marker presses the LMS's own save.

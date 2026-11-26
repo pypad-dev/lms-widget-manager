@@ -92,7 +92,7 @@ export const moodleGradingAdapter: GradingAdapter = {
   },
   /** The question's embed carries `data-lms-grader-source="payload"`; the loader copies it to the wrapper around the widget. */
   requiresPayload: (mount) => mount.closest('[data-lms-grader-source="payload"]') !== null,
-  hasWork: (fields) => hasText(fields.mark?.value) || hasText(fields.comment?.value),
+  hasWork: (fields, only) => hasText(fields.comment?.value) || (only !== 'comment' && hasText(fields.mark?.value)),
   setMark: (fields, mark) => { if (fields.mark) setFieldValue(fields.mark, mark); },
   setComment: (fields, html) => { if (fields.comment) writeComment(fields.comment, html); },
 };

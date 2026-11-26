@@ -5,6 +5,7 @@
  */
 
 import type { ManagerExtension } from '../core/extensions';
+import { ensureAnswerButton } from './answer-button';
 import { ensureGradingToolbar } from './toolbar';
 
 export const gradingExtension: ManagerExtension = {
@@ -13,10 +14,12 @@ export const gradingExtension: ManagerExtension = {
     if (controller.getConfig().runMode !== 'grade') return;
     if (controller.getMountPoint().closest('[data-lms-grading="off"]')) return;
     ensureGradingToolbar(context.document, context.controllers);
+    ensureAnswerButton(controller, context.document);
   },
 };
 
 export { ensureGradingToolbar } from './toolbar';
-export { testAnswer, testAllAnswers, summary, type Outcome } from './runner';
+export { testAnswer, testAllAnswers, summary, outcomeText, type Outcome } from './runner';
+export { ensureAnswerButton } from './answer-button';
 export { commentHtml, pointsOf, score, suggestedMark, type CheckResult, type ChecksAnswer } from './scoring';
 export type { GradingAdapter, GradingFields } from './adapter';

@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { answerPrefix, authorNotebookIn, fieldPrefix, gradingFields, hasText, writeComment } from '../src/adapters/grading/moodle.ts';
 import { commentHtml, pointsOf, score, suggestedMark } from '../src/grading/scoring.ts';
 import { gradingExtension } from '../src/grading/index.ts';
-import { notifyWidgetReady, registerExtension } from '../src/core/extensions.ts';
+import { notifyWidgetReady, registerExtension, unregisterExtension } from '../src/core/extensions.ts';
 import type { GradingAdapter } from '../src/grading/adapter.ts';
-import { summary, testAllAnswers, testAnswer } from '../src/grading/runner.ts';
+import { outcomeText, summary, testAllAnswers, testAnswer } from '../src/grading/runner.ts';
 import { ensureGradingToolbar } from '../src/grading/toolbar.ts';
 import type { WidgetController } from '../src/core/widget-controller.ts';
 
@@ -240,7 +240,7 @@ describe('grading is an extension, and names no LMS', () => {
     registerExtension({ name: 'after', widgetReady() { reached = true; } });
     const quiet = console.error;
     console.error = () => undefined;
-    try { notifyWidgetReady(fake(1, 1, CHECKS) as unknown as WidgetController, { document, controllers: () => [] }); } finally { console.error = quiet; }
+    try { notifyWidgetReady(fake(1, 1, CHECKS) as unknown as WidgetController, { document, controllers: () => [] }); } finally { console.error = quiet; unregisterExtension('broken'); unregisterExtension('after'); }
     expect(reached).toBe(true);
   });
 });
@@ -282,5 +282,107 @@ describe('a question that says its tests are in the grader information', () => {
   it('is counted in what the marker is told', () => {
     expect(summary([{ status: 'missing-tests' }, { status: 'missing-tests' }, { status: 'marked', passed: 1, total: 1, from: 'supplied' }]))
       .toBe('Tests run on 3 answers: 1 filled in (not saved: check them, then save). 2 not marked: the question says its tests are in the grader information, and none were found there (check the question\'s Information for graders).');
+  });
+});
+
+describe('comments only', () => {
+  const mark = () => document.querySelector('[name="q1:1_-mark"]') as HTMLInputElement;
+  const comment = () => document.querySelector('[name="q1:1_-comment"]') as HTMLTextAreaElement;
+
+  it('fills in the comment and leaves the mark box alone, whatever it holds', async () => {
+    document.body.innerHTML = answerHtml(1, 1, 10);
+    mark().value = '7';
+    expect(await testAnswer(fake(1, 1, CHECKS), document, { commentsOnly: true })).toMatchObject({ status: 'marked' });
+    expect(mark().value).toBe('7');                                                 // (the marker's own mark is not work to protect here, and is not touched)
+    expect(comment().value).toContain('1 of 2 passed');
+  });
+
+  it('still leaves a comment the marker has written, unless asked to replace it', async () => {
+    document.body.innerHTML = answerHtml(1, 1, 10);
+    comment().value = '<p>Good start</p>';
+    expect(await testAnswer(fake(1, 1, CHECKS), document, { commentsOnly: true })).toEqual({ status: 'kept' });
+    expect(comment().value).toBe('<p>Good start</p>');
+    expect(await testAnswer(fake(1, 1, CHECKS), document, { commentsOnly: true, replace: true })).toMatchObject({ status: 'marked' });
+  });
+
+  it('has nothing to do where the page has no comment box', async () => {
+    document.body.innerHTML = answerHtml(1, 1, 10).replace(/<textarea id="q1:1_-comment_id"[^>]*><\/textarea>/, '');
+    expect(await testAnswer(fake(1, 1, CHECKS), document, { commentsOnly: true })).toEqual({ status: 'no-fields' });
+  });
+
+  it('is chosen in the bar, remembered in this browser, and read by the buttons', () => {
+    localStorage.clear();
+    document.body.innerHTML = answerHtml(1, 1);
+    const c = fake(1, 1, CHECKS, 'grade') as unknown as WidgetController;
+    ensureGradingToolbar(document, () => [c]);
+    const fill = document.getElementById('lms-widget-grading-fill') as HTMLSelectElement;
+    expect([...fill.options].map((o) => o.textContent)).toEqual(['Marks and comments', 'Comments only']);
+    expect(fill.value).toBe('marks-and-comments');
+    fill.value = 'comments-only';
+    fill.dispatchEvent(new Event('change'));
+    document.querySelector('[data-lms-widget-grading]')!.remove();
+    ensureGradingToolbar(document, () => [c]);                                       // (a page opened again)
+    expect((document.getElementById('lms-widget-grading-fill') as HTMLSelectElement).value).toBe('comments-only');
+    localStorage.clear();
+  });
+});
+
+describe('the button on each answer', () => {
+  const marking = (n: number, mode = 'grade') => {
+    document.body.innerHTML = Array.from({ length: n }, (_, i) => answerHtml(i + 1, 1, 10)).join('');
+    const calls: number[] = [];
+    const controllers = Array.from({ length: n }, (_, i) => ({ ...(fake(i + 1, 1, CHECKS, mode) as object), control: async () => { calls.push(i + 1); return CHECKS; } }) as unknown as WidgetController);
+    registerExtension(gradingExtension);
+    for (const c of controllers) notifyWidgetReady(c, { document, controllers: () => controllers });
+    return { calls };
+  };
+  const buttons = () => [...document.querySelectorAll<HTMLButtonElement>('[data-lms-grading-answer] button')];
+  const statusOf = (i: number) => document.querySelectorAll('[data-lms-grading-answer] [role="status"]')[i]!.textContent;
+  const markOf = (usage: number) => (document.querySelector(`[name="q${usage}:1_-mark"]`) as HTMLInputElement).value;
+
+  it('is on each answer being marked, above its widget, once, and not on an attempt', () => {
+    marking(2);
+    expect(buttons().map((b) => b.textContent)).toEqual(['Run tests on this answer', 'Run tests on this answer']);
+    expect(buttons()[0]!.closest('.que')!.id).toBe('question-1-1');
+    expect(buttons()[1]!.closest('.que')!.id).toBe('question-2-1');
+    marking(2, 'attempt');
+    expect(buttons()).toHaveLength(0);
+  });
+
+  it('tests that answer alone, and says what happened', async () => {
+    const { calls } = marking(3);
+    buttons()[1]!.click();
+    await vi.waitFor(() => expect(statusOf(1)).toContain('1 of 2 passed'));
+    expect(calls).toEqual([2]);
+    expect(markOf(2)).toBe('5');
+    expect([markOf(1), markOf(3)]).toEqual(['', '']);
+    expect(statusOf(1)).toContain('not saved');
+  });
+
+  it('follows the bar: an answer with work is kept until Replace what is there is ticked, and Comments only leaves the mark', async () => {
+    const { calls } = marking(1);
+    (document.querySelector('[name="q1:1_-mark"]') as HTMLInputElement).value = '9';
+    buttons()[0]!.click();
+    await vi.waitFor(() => expect(statusOf(0)).toContain('Already has a mark or comment'));
+    expect(calls).toEqual([]);
+    (document.getElementById('lms-widget-grading-replace') as HTMLInputElement).checked = true;
+    buttons()[0]!.click();
+    await vi.waitFor(() => expect(statusOf(0)).toContain('1 of 2 passed'));
+    expect(markOf(1)).toBe('5');
+    const fill = document.getElementById('lms-widget-grading-fill') as HTMLSelectElement;
+    fill.value = 'comments-only';
+    (document.querySelector('[name="q1:1_-mark"]') as HTMLInputElement).value = '9';
+    buttons()[0]!.click();
+    await vi.waitFor(() => expect(statusOf(0)).toContain('comment filled in'));
+    expect(markOf(1)).toBe('9');
+  });
+
+  it('says in words what became of an answer', () => {
+    expect(outcomeText({ status: 'marked', passed: 1, total: 2, from: 'supplied' })).toBe('1 of 2 passed: mark and comment filled in (not saved: check, then save).');
+    expect(outcomeText({ status: 'marked', passed: 1, total: 2, from: 'template' })).toContain("question's own tests only");
+    expect(outcomeText({ status: 'kept' }, true)).toContain('Already has a comment');
+    expect(outcomeText({ status: 'no-tests' })).toBe('This answer has no tests.');
+    expect(outcomeText({ status: 'failed', reason: 'Python did not start.' })).toBe('Could not be run (Python did not start.).');
+    expect(outcomeText({ status: 'missing-tests' })).toContain('none were found there');
   });
 });
