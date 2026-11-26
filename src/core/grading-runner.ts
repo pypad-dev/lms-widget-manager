@@ -4,7 +4,7 @@
  */
 
 import type { WidgetController } from './widget-controller';
-import { commentHtml, fieldPrefix, gradingFields, setFieldValue, suggestedMark, writeComment, type ChecksAnswer } from './grading';
+import { commentHtml, fieldPrefix, gradingFields, score, setFieldValue, suggestedMark, writeComment, type ChecksAnswer } from './grading';
 
 export type Outcome =
   | { status: 'marked'; passed: number; total: number }
@@ -31,7 +31,8 @@ export async function testAnswer(controller: WidgetController, doc: Document): P
     return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
   }
   if (!answer || !Array.isArray(answer.checks) || answer.total === 0) return { status: 'no-tests' };
-  if (fields.mark && fields.maxMark !== null) setFieldValue(fields.mark, String(suggestedMark(answer.passed, answer.total, fields.maxMark)));
+  const { gained, possible } = score(answer.checks);
+  if (fields.mark && fields.maxMark !== null) setFieldValue(fields.mark, String(suggestedMark(gained, possible, fields.maxMark)));
   if (fields.comment) writeComment(fields.comment, commentHtml(answer));
   return { status: 'marked', passed: answer.passed, total: answer.total };
 }

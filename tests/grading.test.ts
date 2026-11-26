@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { commentHtml, fieldPrefix, gradingFields, suggestedMark, writeComment } from '../src/core/grading.ts';
+import { commentHtml, fieldPrefix, gradingFields, pointsOf, score, suggestedMark, writeComment } from '../src/core/grading.ts';
 import { summary, testAllAnswers, testAnswer } from '../src/core/grading-runner.ts';
 import { ensureGradingToolbar } from '../src/core/grading-toolbar.ts';
 import type { WidgetController } from '../src/core/widget-controller.ts';
@@ -37,11 +37,19 @@ describe('the rules', () => {
     expect(suggestedMark(0, 0, 10)).toBe(0);
   });
 
+  it('adds up the points of the checks passed and of them all; a check that does not say is worth 1', () => {
+    expect(pointsOf({})).toBe(1);
+    expect(pointsOf({ points: 0 })).toBe(0);
+    expect(pointsOf({ points: -2 })).toBe(1);
+    expect(score([{ id: 'a', name: 'a', passed: true, message: '', points: 3 }, { id: 'b', name: 'b', passed: false, message: '' }])).toEqual({ gained: 3, possible: 4 });
+    expect(score([])).toEqual({ gained: 0, possible: 0 });
+  });
+
   it('writes a comment that says it was suggested, each check, and the reason for one that failed, escaped', () => {
     const html = commentHtml(CHECKS);
-    expect(html).toContain('Suggested from the tests</strong>: 1 of 2 passed.');
-    expect(html).toContain('✔ doubles four</li>');
-    expect(html).toContain('✘ zero &lt;stays&gt; zero: <code>double(0) should be 0</code>');
+    expect(html).toContain('Suggested from the tests</strong>: 1 of 2 passed (1 of 2 points).');
+    expect(html).toContain('✔ doubles four (1 point)</li>');
+    expect(html).toContain('✘ zero &lt;stays&gt; zero (1 point): <code>double(0) should be 0</code>');
   });
 
   it('finds the mark, maximum and comment of an answer, and only that answer\'s', () => {
@@ -75,6 +83,14 @@ describe('testing the answers', () => {
     expect(await testAnswer(fake(1, 1, CHECKS), document)).toEqual({ status: 'marked', passed: 1, total: 2 });
     expect((document.querySelector('[name="q1:1_-mark"]') as HTMLInputElement).value).toBe('5');
     expect((document.querySelector('[name="q1:1_-comment"]') as HTMLTextAreaElement).value).toContain('1 of 2 passed');
+  });
+
+  it('weighs the checks by their points', async () => {
+    document.body.innerHTML = answerHtml(1, 1, 10);
+    const weighted = { checks: [{ id: 'a', name: 'easy', passed: true, message: '', points: 1 }, { id: 'b', name: 'hard', passed: false, message: 'no', points: 3 }], passed: 1, total: 2 };
+    await testAnswer(fake(1, 1, weighted), document);
+    expect((document.querySelector('[name="q1:1_-mark"]') as HTMLInputElement).value).toBe('2.5');
+    expect((document.querySelector('[name="q1:1_-comment"]') as HTMLTextAreaElement).value).toContain('1 of 2 passed (1 of 4 points)');
   });
 
   it('says when an answer has no tests, no fields, or could not be run, and fills in nothing then', async () => {
