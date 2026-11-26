@@ -3,16 +3,18 @@
 How `lms-widget-manager` asks an answer widget to grade itself on a marker's page, and what it does with the result. The manager does not need to know what the widget is: it finds each
 answer and its mark and comment fields on the LMS page, asks the widget to grade, and writes the result into the fields. Nothing is saved: the marker reads, changes and saves as always.
 
-**Status: a proposal.** Today the manager speaks PyPad's own control messages (`PYPAD_CONTROL`, op `checks`; see section 9), and finds PyPad's block by name. This document is the
-generic form to move to, so that another widget can be graded by the same button. Sections 9 and 10 say what is built and what is to decide.
+**Status: a proposal, with its structure built.** Grading is now an extension of the manager (section 7) with the LMS-specific parts behind an adapter. The messages are still PyPad's own
+(`PYPAD_CONTROL`, op `checks`) and the author's block is still found by PyPad's name; this document is the generic form to move to, so that another widget can be graded by the same
+button. Sections 9 and 10 say what is built and what is to decide.
 
 ## 1. Parts
 
 | Part | Job |
 |---|---|
 | **Widget** | Shows the student's answer; can grade it when asked. Runs in a frame from the site that serves it |
-| **Manager** | Runs on the LMS page. Coordinates: finds the answers, asks each widget, turns results into a mark and a comment |
-| **Page adapter** | The LMS-specific part of the manager: where an answer's block is, what its mark and comment fields are called, how to write into a comment's editor. Moodle's is the only one so far |
+| **Manager** | Runs on the LMS page. Its core sets widgets up and has one hook for extensions (a widget is ready) |
+| **Grading extension** | Optional, part of the manager's bundle only if its entry file registers it (`src/grading`). Asks each widget, turns results into a mark and a comment |
+| **Grading adapter** | The LMS-specific part of grading (`GradingAdapter`): where an answer's boxes are, what the author left for its widget, what a marker has already put in, how to write into the boxes. Moodle's is the only one so far (`src/adapters/grading/moodle.ts`) |
 | **Grader information** | A box only markers can see (Moodle's *Information for graders*), where an author can leave a payload for the widget |
 
 ## 2. Messages
@@ -29,7 +31,8 @@ The widget's ready message (`WIDGET_READY`) may carry what it can do:
 ```
 
 - `version`: this protocol's version (1).
-- `kind`: a name for the sort of widget; the manager matches a payload block to widgets of its kind (section 4).
+- `kind`: a name for the sort of widget. A payload block that names a kind is sent only to widgets of that kind (section 4). It is not a security boundary: a widget says its own kind, so the
+  real limit is that the manager sends only to the widgets it manages.
 - `maxConcurrent`: how many answers of this widget it can grade at once (default 2).
 - `sources`: which of the sources in 2.2 it takes.
 
@@ -43,7 +46,7 @@ The manager shows its grading button only when a widget on the page says `grade`
 
 | `source` | `data` | The widget grades with |
 |---|---|---|
-| `self` | none, or a key (below) | what it already holds: its own tests or its own rules. Needs no payload |
+| `self` | none, or a key (below) | what it was given with the question: its template's tests or rules. Needs no payload |
 | `payload` | the text the author left in the grader information | the tests or rules in `data`, **in place of** any it holds, so a student's changed copy cannot change the mark |
 | `ref` | an address or id | what is found there (an autograder service). Later; the widget says it takes it in `sources` |
 
@@ -67,7 +70,7 @@ cannot, or whose sealed block is missing or changed, answers with an error, neve
   | Value | Meaning |
   |---|---|
   | `supplied` | the `data` the manager sent |
-  | `own` | what the widget holds, unsealed (**not tamper-proof**: it is in the student's saved answer) |
+  | `template` | what the widget got with the question (its template), unsealed: the question's public and protected tests, as the author wrote them. Not the copy in a student's saved answer, which the widget puts back from the template (see 6). **Leaves out the author's private tests**, which are never in the template |
   | `sealed` | what the widget holds, sealed, opened with the key |
   | `remote` | a service, by `ref` |
 
@@ -81,7 +84,7 @@ cannot, or whose sealed block is missing or changed, answers with an error, neve
 - **Mark** = points of the items passed ÷ points of all items × the question's maximum mark, to two decimal places (Moodle's precision for a manual mark). From `score` when there are no items.
   An answer with no items and no `score` is "had no tests" and is left alone.
 - **Comment** = a first line that says it was suggested, and from where (`testsFrom`), then each item, passed or not, with its points and the message of one that failed, then `note`.
-  (`Suggested from the tests (the author's): 1 of 2 passed (1 of 4 points).`)
+  (`Suggested from the author's tests: 1 of 2 passed (1 of 4 points).` or `Suggested from the question's own tests (public and protected; no private tests were used): …`)
 - **A mark or comment already in the box is left as it is**; the summary says how many. A tick, *Replace what is there*, writes over them.
 - **Planned:** a choice of *Marks and comments* or *Comments only*; a button on each answer as well as the one for all.
 - **Order and pace:** answers on the page, in page order, a few at a time: the manager's `concurrency` (default 2), or the widget's `maxConcurrent` if less. A widget that does not answer in
@@ -103,7 +106,17 @@ An author leaves it in the answer's grader information as a block no browser run
   in PyPad).
 - `data-widget` names the kind of widget it is for; the manager sends it only to widgets of that `kind`. Without it, to any.
 - The manager passes the text on unread. What it means is the widget's.
-- No block: the manager asks with `source: 'self'`.
+- **The question can say its tests must come from the payload.** The question's own embed (in the question text, a different field from the grader information, so editing one does not touch the
+  other) carries `data-lms-grader-source="payload"`, which reaches the widget's container with the other `data-lms-*` attributes. The manager then reads it:
+
+  | Flag | Block found | The manager |
+  |---|---|---|
+  | `payload` | yes | sends it |
+  | `payload` | **no** | **refuses**: the answer is skipped, and the status says the question's tests are missing from its grader information (a lost block, for example one the editor stripped, would otherwise be marked from fewer tests, with nothing to say so) |
+  | none | yes | sends it |
+  | none | no | asks with `source: 'self'`, and the comment says which tests were used |
+
+  The question builder writes the flag whenever it writes a block. It is in the question text, so a hand edit there can remove it; the comment's first line is the second defence.
 
 ## 5. Finding an answer's fields
 
@@ -117,13 +130,23 @@ in the same block, then from the textarea's name, then from the block's id. A co
   student never receives, and never in the question's own text or the student's saved answer.
 - **A widget's answer is data.** It is written as text. A widget cannot put markup or script into the LMS page, or choose which field is written: the manager does.
 - **Only the manager's own frames** are sent requests, and only a reply from the frame asked, with the right `id`, is taken.
-- **A widget that grades itself (`own`) can be tampered with by a student** who edits their saved answer. The comment says so; marks that matter should come from `supplied` or `sealed`.
+- **A student's saved answer does not supply tests.** PyPad merges the question's template with the saved answer: every setting and every locked cell (tests included) comes from the template, and
+  from the answer only the text and output of cells the student could edit; a student's changes to a test cell are put back, and cells they add keep no settings (`mergeAnswer`,
+  `packages/notebook/src/merge.ts`). Without a template, for a notebook opened on its own, there is nothing to put back, and the notebook's own tests are the student's copy.
+- **Marks that matter need `supplied` or `sealed`,** because `template` has no private tests.
 - **Student code and the tests share a Python** in PyPad today; a student's code could read the tests while they run. Only a second Python for the tests closes that (PyPad's `docs/TESTING.md`, Part B).
 
-## 7. Other LMSs
+## 7. The manager's structure, and other LMSs
 
-The protocol and the scoring are the manager's core; the page adapter is the only LMS-specific part. A second LMS needs its adapter (where answers are, their mark and comment fields, how to write
-them) and nothing in the widgets.
+The protocol and the scoring (`src/grading/scoring.ts`) name no LMS. A second LMS needs a `GradingAdapter` (`src/grading/adapter.ts`: where an answer's boxes are, what the author left for its widget,
+whether a marker has already put something in, how to write a mark and a comment) and nothing in the widgets.
+
+### The extension
+
+Grading attaches to the manager through one hook (`src/core/extensions.ts`): `registerExtension({ name, widgetReady(controller, context) })`, called for each widget once its messenger is ready.
+The entry file registers the grading extension (`registerExtension(gradingExtension)` in `src/index.ts`): take the line out and grading is not in the bundle. On a page, `data-lms-grading="off"` on a
+widget's container, or on any element around it, leaves the page without the button. An extension that throws does not stop the others or the widget. (A separate file for grading, loaded only on
+a marking page, so that students never download it, is possible from here and not done.)
 
 ## 8. Example
 
@@ -140,17 +163,28 @@ points × the question's 1.00 = 0.25.
 | Sources | `payload` (the author's notebook, as `tests`) and `self` (no `tests`) | the same, named |
 | Payload block | `<script type="text/x-pypad-author">` | `application/x-lms-grader` with `data-widget="pypad"` |
 | Capabilities | none: the button appears for any widget in grade mode | `grade` in the ready message |
+| Structure | built: an extension (`src/grading`), a `GradingAdapter` (Moodle's in `src/adapters/grading/moodle.ts`), `data-lms-grading="off"` | the same |
 | Fields | from the answer's own block (built) | the same |
 | No overwrite | built | the same |
+| `data-lms-grader-source` | not built | refuse when the question says `payload` and there is none |
+| Comment's first line | says it was suggested | says from where (`testsFrom`) |
 
-PyPad would answer `GRADE_REQUEST` by running its `checks`: `source: 'payload'` gives `tests`, `self` gives none; `testsFrom` is `supplied` or `own`. Its `PYPAD_CONTROL` stays, for a page that embeds
+PyPad would answer `GRADE_REQUEST` by running its `checks`: `source: 'payload'` gives `tests`, `self` gives none; `testsFrom` is `supplied` or `template`. Its `PYPAD_CONTROL` stays, for a page that embeds
 and drives PyPad.
 
-## 10. To decide
+## 10. Decided, and to decide
 
-1. The names: `GRADE_REQUEST` and `GRADE_RESULT`, and the block type `application/x-lms-grader`.
-2. Whether a widget's `kind` and a block's `data-widget` must match, or are only a hint.
-3. `ref`: what an address means, and who fetches it (the widget or the manager).
-4. Sealed tests (`self` with a key): the sealing, and where the key comes from for each LMS. In PyPad, step T6 of `docs/TESTING.md`.
-5. Whether `testsFrom` should change what the manager does (refuse `own` for a question that says it needs sealed or supplied tests), or only what it says.
-6. A `maxConcurrent` for the manager's own default, per site.
+**Decided** (2026-11-26; the first two are proposals taken as the working rule, to change if they do not suit):
+
+- A block that names a kind (`data-widget`) goes only to a widget of that kind; a block with no name goes to any widget. Not a security boundary.
+- The question can declare `data-lms-grader-source="payload"`; the manager refuses to mark from the template alone when it does and no payload is found; otherwise it marks from the template and says
+  so. (The unsealed fallback is `template`: tamper-proof, since the saved answer is not used, but without private tests.)
+- Grading is an extension with an adapter, and can be switched off on a page.
+
+**To decide**
+
+1. The names: `GRADE_REQUEST`, `GRADE_RESULT`, `application/x-lms-grader`, `data-lms-grader-source`.
+2. `ref`: what an address means, and who fetches it (the widget or the manager).
+3. Sealed tests (`self` with a key): the sealing, and where the key comes from for each LMS. In PyPad, step T6 of `docs/TESTING.md`.
+4. A `maxConcurrent` for the manager's own default, per site.
+5. Whether to build grading as a file of its own, loaded only on a marking page.
